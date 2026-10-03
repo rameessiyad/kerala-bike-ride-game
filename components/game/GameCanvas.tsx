@@ -3,7 +3,7 @@ import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import * as THREE from "three";
 import { useEffect, useMemo, useRef } from "react";
 import { useGame, type Weather } from "@/store/gameStore";
-import { h, rx, rdx, CPS, TREES, HOUSES, RIVER_Z, env } from "@/lib/game/world";
+import { h, rx, rdx, CPS, TREES, OBST, LANE, env } from "@/lib/game/world";
 import {
   Terrain,
   River,
@@ -14,7 +14,12 @@ import {
   SkyDome,
   BikeModel,
   VehicleModel,
+  Buildings,
+  Bushes,
+  Pedestrians,
+  Birds,
   skyCol,
+  type Kind,
 } from "./Visuals";
 import { Environment, Lightformer } from "@react-three/drei";
 import {
@@ -144,34 +149,74 @@ function Sky() {
 type V = {
   z: number;
   v: number;
+  b: number;
   lane: number;
-  kind: "car" | "bus" | "bike";
+  kind: Kind;
   c: string;
 };
+const KINDS: Kind[] = [
+  "car",
+  "truck",
+  "bike",
+  "bus",
+  "auto",
+  "car",
+  "tanker",
+  "bike",
+  "truck",
+  "auto",
+];
+const HIT: Record<Kind, number> = {
+  car: 1.8,
+  bus: 4.2,
+  bike: 1.3,
+  truck: 3.2,
+  auto: 1.5,
+  tanker: 3.2,
+};
 function Traffic({ pl }: { pl: React.RefObject<THREE.Group | null> }) {
+  // Kerala keeps LEFT: lane < 0 = same direction as the player (left side), lane > 0 = oncoming
   const vs = useRef<V[]>(
-    Array.from({ length: 7 }, (_, i) => ({
-      z: -50 - i * 62,
-      v: 8 + (i % 4) * 3,
-      lane: i % 2 ? -2.3 : 2.3,
-      kind: (["car", "bus", "bike"] as const)[i % 3],
-      c: ["#c0392b", "#2e86c1", "#f1c40f", "#ecf0f1"][i % 4],
-    })),
+    KINDS.map((kind, i) => {
+      const b = 6 + (i % 5) * 2.4;
+      return {
+        z: -45 - i * 41,
+        v: b,
+        b,
+        lane: i % 2 ? LANE : -LANE,
+        kind,
+        c: ["#c0392b", "#2e86c1", "#f1c40f", "#ecf0f1", "#27ae60"][i % 5],
+      };
+    }),
   );
   const refs = useRef<(THREE.Group | null)[]>([]);
   useFrame((_, d) => {
     const dt = Math.min(d, 0.05),
       pp = pl.current?.position;
     vs.current.forEach((v, i) => {
-      v.z += (v.lane < 0 ? v.v : -v.v) * dt;
-      if (v.z > 40) v.z = -420;
-      if (v.z < -430) v.z = 30;
+      const dir = v.lane < 0 ? -1 : 1;
+      const lead = vs.current.find(
+        (o) =>
+          o !== v &&
+          o.lane === v.lane &&
+          (o.z - v.z) * dir > 0 &&
+          (o.z - v.z) * dir < 14,
+      );
+      v.v = lead ? Math.min(v.b, Math.max(0, lead.v - 0.5)) : v.b;
+      v.z += dir * v.v * dt;
+      if (v.z > 40) {
+        v.z = -420;
+      } else if (v.z < -430) {
+        v.z = 30;
+      }
       const g = refs.current[i];
       if (!g) return;
-      const dz = v.lane < 0 ? 1 : -1;
       g.position.set(rx(v.z) + v.lane, 0.05, v.z);
-      g.rotation.y = Math.atan2(rdx(v.z) * dz, dz);
-      if (pp && Math.hypot(pp.x - g.position.x, pp.z - g.position.z) < 2)
+      g.rotation.y = Math.atan2(rdx(v.z) * dir, dir);
+      if (
+        pp &&
+        Math.hypot(pp.x - g.position.x, pp.z - g.position.z) < HIT[v.kind]
+      )
         useGame.getState().set({ toast: "Crash!" });
     });
   });
@@ -199,7 +244,7 @@ function Rider({
   const { camera } = useThree();
   const z0 = 20,
     st = useRef({
-      x: rx(z0),
+      x: rx(z0) - LANE,
       z: z0,
       hd: Math.atan2(-rdx(z0), -1),
       v: 0,
@@ -211,7 +256,7 @@ function Rider({
       fuel: 100,
       acc: 0,
       t0: performance.now(),
-      last: { x: rx(z0), z: z0, hd: Math.atan2(-rdx(z0), -1) },
+      last: { x: rx(z0) - LANE, z: z0, hd: Math.atan2(-rdx(z0), -1) },
     });
   const keys = useRef<Record<string, boolean>>({}),
     light = useRef<THREE.SpotLight>(null!),
@@ -286,6 +331,14 @@ function Rider({
         s.shake = 1;
         s.x -= Math.sin(s.hd) * 0.5;
         s.z -= Math.cos(s.hd) * 0.5;
+      }
+    for (const o of OBST)
+      if (Math.hypot(o.x - s.x, o.z - s.z) < o.r) {
+        s.v *= -0.2;
+        s.shake = 1;
+        const a = Math.atan2(s.x - o.x, s.z - o.z);
+        s.x = o.x + Math.sin(a) * (o.r + 0.05);
+        s.z = o.z + Math.cos(a) * (o.r + 0.05);
       }
     if (gs.toast === "Crash!") {
       s.v *= 0.5;
@@ -395,6 +448,9 @@ function Scene() {
       <Houses />
       <Poles />
       <Grass />
+      <Buildings />
+      <Bushes />
+      <Birds />
       <Rain />
       {CPS.map((z, i) => (
         <mesh key={i} position={[rx(z), 2.5, z]}>
@@ -408,6 +464,7 @@ function Scene() {
       ))}
       <Rider groupRef={pl} />
       <Traffic pl={pl} />
+      <Pedestrians pl={pl} />
     </>
   );
 }

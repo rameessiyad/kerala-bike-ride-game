@@ -4,7 +4,19 @@ import { useEffect, useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import { Stars } from "@react-three/drei";
 import { useGame } from "@/store/gameStore";
-import { h, rx, rdx, TREES, HOUSES, RIVER_Z, env } from "@/lib/game/world";
+import {
+  h,
+  rx,
+  rdx,
+  TREES,
+  HOUSES,
+  BUILDINGS,
+  BUSHES,
+  PEOPLE,
+  forest,
+  RIVER_Z,
+  env,
+} from "@/lib/game/world";
 
 export const skyCol = {
   top: new THREE.Color("#3d7fc4"),
@@ -165,13 +177,15 @@ export function Terrain() {
       a = new THREE.Color("#4c8a2e"),
       b = new THREE.Color("#2f6320"),
       dirt = new THREE.Color("#8a7650"),
-      sand = new THREE.Color("#9d8d68");
+      sand = new THREE.Color("#9d8d68"),
+      deep = new THREE.Color("#1c4a17");
     for (let i = 0; i < p.count; i++) {
       const x = p.getX(i),
         z = p.getZ(i) - 200,
         y = h(x, z);
       p.setXYZ(i, x, y, z);
       c.copy(a).lerp(b, Math.sin(x * 0.21) * Math.sin(z * 0.17) * 0.5 + 0.5);
+      c.lerp(deep, forest(z) * 0.7);
       c.lerp(dirt, 1 - ss(5, 9, Math.abs(x - rx(z)))).lerp(
         sand,
         ss(-0.8, -2, y),
@@ -845,14 +859,185 @@ export function BikeModel({
   );
 }
 
-export function VehicleModel({
-  kind,
-  color,
+export type Kind = "car" | "bus" | "bike" | "truck" | "auto" | "tanker";
+const Tire = ({
+  x,
+  y,
+  z,
+  r,
+  w = 0.25,
 }: {
-  kind: "car" | "bus" | "bike";
-  color: string;
-}) {
+  x: number;
+  y: number;
+  z: number;
+  r: number;
+  w?: number;
+}) => (
+  <mesh position={[x, y, z]} rotation={[0, 0, Math.PI / 2]} castShadow>
+    <cylinderGeometry args={[r, r, w, 16]} />
+    <meshStandardMaterial color="#141414" roughness={0.9} />
+  </mesh>
+);
+const Lamp = ({
+  p,
+  c = "#fff3c8",
+}: {
+  p: [number, number, number];
+  c?: string;
+}) => (
+  <mesh position={p}>
+    <sphereGeometry args={[0.14, 10, 8]} />
+    <meshStandardMaterial color={c} emissive={c} emissiveIntensity={2} />
+  </mesh>
+);
+
+export function VehicleModel({ kind, color }: { kind: Kind; color: string }) {
+  const glass = (
+    <meshStandardMaterial color="#0f1d2b" metalness={0.9} roughness={0.05} />
+  );
+  const chrome = (
+    <meshStandardMaterial color="#d0d4d8" metalness={1} roughness={0.2} />
+  );
   if (kind === "bike") return <BikeModel color={color} scale={0.95} />;
+  if (kind === "auto")
+    return (
+      <group>
+        <mesh position={[0, 0.55, -0.1]} castShadow>
+          <boxGeometry args={[1.25, 0.55, 1.7]} />
+          <meshStandardMaterial color="#f2c200" roughness={0.5} />
+        </mesh>
+        <mesh position={[0, 0.9, 0.75]} castShadow>
+          <boxGeometry args={[0.9, 0.5, 0.5]} />
+          <meshStandardMaterial color="#f2c200" roughness={0.5} />
+        </mesh>
+        <mesh position={[0, 1.85, -0.3]} castShadow>
+          <boxGeometry args={[1.3, 0.08, 1.7]} />
+          <meshStandardMaterial color="#1b1b1b" roughness={0.9} />
+        </mesh>
+        {[-1, 1].flatMap((s) =>
+          [0.45, -1.1].map((z) => (
+            <mesh key={`${s}${z}`} position={[s * 0.6, 1.3, z]}>
+              <cylinderGeometry args={[0.03, 0.03, 1, 6]} />
+              <meshStandardMaterial color="#222" />
+            </mesh>
+          )),
+        )}
+        <mesh position={[0, 1.35, 0.5]} rotation={[-0.2, 0, 0]}>
+          <boxGeometry args={[1.1, 0.7, 0.04]} />
+          {glass}
+        </mesh>
+        <mesh position={[0, 0.95, -0.55]}>
+          <boxGeometry args={[1.1, 0.15, 0.6]} />
+          <meshStandardMaterial color="#222" roughness={0.9} />
+        </mesh>
+        <Tire x={0} y={0.26} z={0.95} r={0.26} w={0.15} />
+        <Tire x={0.6} y={0.26} z={-0.6} r={0.26} w={0.15} />
+        <Tire x={-0.6} y={0.26} z={-0.6} r={0.26} w={0.15} />
+        <Lamp p={[0, 0.75, 1.02]} />
+      </group>
+    );
+  if (kind === "truck" || kind === "tanker") {
+    const paint = (
+      <meshPhysicalMaterial
+        color={color}
+        metalness={0.4}
+        roughness={0.35}
+        clearcoat={0.8}
+      />
+    );
+    return (
+      <group>
+        <mesh position={[0, 0.8, 0]} castShadow>
+          <boxGeometry args={[2, 0.35, 7.2]} />
+          <meshStandardMaterial color="#222" roughness={0.8} />
+        </mesh>
+        <mesh position={[0, 1.95, 2.7]} castShadow>
+          <boxGeometry args={[2.3, 1.9, 1.9]} />
+          {paint}
+        </mesh>
+        <mesh position={[0, 2.35, 3.67]}>
+          <boxGeometry args={[2, 0.8, 0.05]} />
+          {glass}
+        </mesh>
+        <mesh position={[0, 3.05, 3.5]}>
+          <boxGeometry args={[2.4, 0.1, 0.5]} />
+          <meshStandardMaterial color="#ffd400" />
+        </mesh>
+        <mesh position={[0, 1.2, 3.67]}>
+          <boxGeometry args={[1.6, 0.7, 0.05]} />
+          <meshStandardMaterial
+            color="#2a2a2a"
+            metalness={0.8}
+            roughness={0.4}
+          />
+        </mesh>
+        <mesh position={[0, 0.7, 3.75]}>
+          <boxGeometry args={[2.3, 0.25, 0.3]} />
+          {chrome}
+        </mesh>
+        <Lamp p={[-0.8, 1.1, 3.7]} />
+        <Lamp p={[0.8, 1.1, 3.7]} />
+        <Lamp p={[-0.8, 1.0, -3.65]} c="#f00" />
+        <Lamp p={[0.8, 1.0, -3.65]} c="#f00" />
+        {kind === "truck" ? (
+          <group>
+            <mesh position={[0, 1.05, -0.9]} receiveShadow>
+              <boxGeometry args={[2.4, 0.12, 4.8]} />
+              <meshStandardMaterial color="#8a6a3a" roughness={0.9} />
+            </mesh>
+            {[-1.15, 1.15].map((x) => (
+              <mesh key={x} position={[x, 1.55, -0.9]} castShadow>
+                <boxGeometry args={[0.1, 0.9, 4.8]} />
+                <meshStandardMaterial color="#b9873f" roughness={0.9} />
+              </mesh>
+            ))}
+            <mesh position={[0, 1.55, -3.3]}>
+              <boxGeometry args={[2.4, 0.9, 0.1]} />
+              <meshStandardMaterial color="#b9873f" roughness={0.9} />
+            </mesh>
+            <mesh position={[0, 1.6, 1.5]}>
+              <boxGeometry args={[2.4, 1.2, 0.1]} />
+              <meshStandardMaterial color="#b9873f" roughness={0.9} />
+            </mesh>
+            {[-1.2, 0.2, 1.4].map((z, k) => (
+              <mesh
+                key={z}
+                position={[k % 2 ? 0.4 : -0.4, 1.4 + (k % 2) * 0.1, -0.2 - z]}
+                castShadow
+              >
+                <boxGeometry args={[0.9, 0.6, 0.9]} />
+                <meshStandardMaterial color="#d9c9a0" roughness={1} />
+              </mesh>
+            ))}
+            {[-1.21, 1.21].map((x) => (
+              <mesh key={x} position={[x, 1.35, -0.9]}>
+                <boxGeometry args={[0.02, 0.2, 4.8]} />
+                <meshStandardMaterial color="#d62828" />
+              </mesh>
+            ))}
+          </group>
+        ) : (
+          <mesh
+            position={[0, 2.0, -1]}
+            rotation={[Math.PI / 2, 0, 0]}
+            castShadow
+          >
+            <cylinderGeometry args={[0.95, 0.95, 5.2, 20]} />
+            <meshStandardMaterial
+              color="#c9cfd4"
+              metalness={0.9}
+              roughness={0.25}
+            />
+          </mesh>
+        )}
+        {[-1.1, 1.1].flatMap((x) =>
+          [2.7, -1.6, -2.8].map((z) => (
+            <Tire key={`${x}${z}`} x={x} y={0.5} z={z} r={0.5} w={0.3} />
+          )),
+        )}
+      </group>
+    );
+  }
   const bus = kind === "bus",
     L = bus ? 9.2 : 4,
     Wd = bus ? 2.5 : 1.8,
@@ -864,9 +1049,6 @@ export function VehicleModel({
       roughness={0.25}
       clearcoat={1}
     />
-  );
-  const glass = (
-    <meshStandardMaterial color="#0f1d2b" metalness={0.9} roughness={0.05} />
   );
   return (
     <group>
@@ -887,36 +1069,342 @@ export function VehicleModel({
       )}
       {[-1, 1].flatMap((sx) =>
         (bus ? [-3, 3] : [-1.25, 1.25]).map((z) => (
-          <mesh
-            key={`${sx}${z}`}
-            position={[sx * (Wd / 2), wr, z]}
-            rotation={[0, 0, Math.PI / 2]}
-            castShadow
-          >
-            <cylinderGeometry args={[wr, wr, 0.25, 16]} />
-            <meshStandardMaterial color="#141414" roughness={0.9} />
-          </mesh>
+          <Tire key={`${sx}${z}`} x={sx * (Wd / 2)} y={wr} z={z} r={wr} />
         )),
       )}
       {[-1, 1].map((s) => (
-        <mesh key={s} position={[s * (Wd / 2 - 0.3), bus ? 0.9 : 0.65, L / 2]}>
-          <sphereGeometry args={[0.14, 10, 8]} />
-          <meshStandardMaterial
-            color="#fff"
-            emissive="#fff3c8"
-            emissiveIntensity={2}
-          />
-        </mesh>
+        <Lamp key={`h${s}`} p={[s * (Wd / 2 - 0.3), bus ? 0.9 : 0.65, L / 2]} />
       ))}
       {[-1, 1].map((s) => (
-        <mesh key={s} position={[s * (Wd / 2 - 0.3), bus ? 0.9 : 0.65, -L / 2]}>
-          <boxGeometry args={[0.3, 0.12, 0.05]} />
-          <meshStandardMaterial
-            color="#e00"
-            emissive="#e00"
-            emissiveIntensity={1.5}
-          />
-        </mesh>
+        <Lamp
+          key={`t${s}`}
+          p={[s * (Wd / 2 - 0.3), bus ? 0.9 : 0.65, -L / 2]}
+          c="#e00"
+        />
+      ))}
+    </group>
+  );
+}
+
+function facade(cols: number, floors: number, win: string, bg: string) {
+  return canvasTex(
+    64,
+    64,
+    (c, r) => {
+      c.fillStyle = bg;
+      c.fillRect(0, 0, 64, 64);
+      if (bg !== "#000") speckle(c, 64, 64, r, 300, "#fff", "#777");
+      c.fillStyle = win;
+      c.fillRect(12, 14, 40, 32);
+      if (bg !== "#000") {
+        c.fillStyle = "#bdbab0";
+        c.fillRect(10, 46, 44, 4);
+      }
+    },
+    [cols, floors],
+  );
+}
+
+export function Buildings() {
+  const mats = useMemo(
+    () =>
+      BUILDINGS.map((b) => {
+        const cols = Math.round(b.w / 3.5);
+        return new THREE.MeshStandardMaterial({
+          map: facade(cols, b.floors, "#26343f", "#ece8dc"),
+          emissiveMap: facade(cols, b.floors, "#ffd08a", "#000"),
+          emissive: "#ffffff",
+          emissiveIntensity: 0,
+          color: b.c,
+          roughness: 0.9,
+        });
+      }),
+    [],
+  );
+  const signs = useMemo(
+    () =>
+      BUILDINGS.map(
+        (b) =>
+          new THREE.MeshStandardMaterial({
+            color: b.sign,
+            emissive: b.sign,
+            emissiveIntensity: 0.1,
+          }),
+      ),
+    [],
+  );
+  useFrame(() => {
+    mats.forEach((m) => {
+      m.emissiveIntensity = env.night * 1.6;
+    });
+    signs.forEach((m) => {
+      m.emissiveIntensity = 0.1 + env.night * 1.5;
+    });
+  });
+  return (
+    <group>
+      {BUILDINGS.map((b, i) => {
+        const H = b.floors * 3.2;
+        return (
+          <group
+            key={i}
+            position={[b.x, h(b.x, b.z), b.z]}
+            rotation={[0, b.side > 0 ? -Math.PI / 2 : Math.PI / 2, 0]}
+          >
+            <mesh
+              position={[0, H / 2, 0]}
+              material={mats[i]}
+              castShadow
+              receiveShadow
+            >
+              <boxGeometry args={[b.w, H, 9]} />
+            </mesh>
+            <mesh position={[0, 1.5, 4.53]}>
+              <boxGeometry args={[b.w - 1, 2.8, 0.1]} />
+              <meshStandardMaterial
+                color="#1a2630"
+                metalness={0.8}
+                roughness={0.1}
+              />
+            </mesh>
+            <mesh
+              position={[0, 3.1, 5.1]}
+              rotation={[0.35, 0, 0]}
+              material={signs[i]}
+            >
+              <boxGeometry args={[b.w - 0.6, 0.08, 1.5]} />
+            </mesh>
+            <mesh position={[0, 3.75, 4.6]} material={signs[i]}>
+              <boxGeometry args={[b.w - 2.5, 0.6, 0.1]} />
+            </mesh>
+            <mesh position={[0, H + 0.2, 0]}>
+              <boxGeometry args={[b.w + 0.2, 0.4, 9.2]} />
+              <meshStandardMaterial color="#8d8a80" roughness={1} />
+            </mesh>
+            <mesh position={[b.w / 3, H + 1, -1]} castShadow>
+              <cylinderGeometry args={[0.7, 0.7, 1.2, 12]} />
+              <meshStandardMaterial color="#1f3b5a" roughness={0.6} />
+            </mesh>
+          </group>
+        );
+      })}
+    </group>
+  );
+}
+
+export function Bushes() {
+  const ref = useRef<THREE.InstancedMesh>(null!);
+  useEffect(() => {
+    const d = new THREE.Object3D(),
+      c = new THREE.Color(),
+      r = rnd(9);
+    BUSHES.forEach((b, i) => {
+      d.position.set(b.x, b.y + 0.35 * b.s, b.z);
+      d.scale.set(1.3 * b.s, 0.8 * b.s, 1.3 * b.s);
+      d.rotation.y = r() * 6;
+      d.updateMatrix();
+      ref.current.setMatrixAt(i, d.matrix);
+      ref.current.setColorAt(
+        i,
+        c.setHSL(0.27 + r() * 0.06, 0.5, 0.15 + r() * 0.1),
+      );
+    });
+    ref.current.instanceMatrix.needsUpdate = true;
+    if (ref.current.instanceColor) ref.current.instanceColor.needsUpdate = true;
+  }, []);
+  return (
+    <instancedMesh
+      ref={ref}
+      args={[undefined, undefined, BUSHES.length]}
+      castShadow
+    >
+      <icosahedronGeometry args={[1, 1]} />
+      <meshStandardMaterial roughness={1} flatShading />
+    </instancedMesh>
+  );
+}
+
+export function Pedestrians({
+  pl,
+}: {
+  pl: React.RefObject<THREE.Group | null>;
+}) {
+  const st = useRef(PEOPLE.map((p) => ({ ...p })));
+  const root = useRef<(THREE.Group | null)[]>([]),
+    L = useRef<(THREE.Group | null)[]>([]),
+    R = useRef<(THREE.Group | null)[]>([]);
+  useFrame(({ clock }, d) => {
+    const dt = Math.min(d, 0.05),
+      pp = pl.current?.position;
+    st.current.forEach((p, i) => {
+      p.z += p.dir * p.sp * dt;
+      if (p.z < p.zmin) {
+        p.z = p.zmin;
+        p.dir = 1;
+      } else if (p.z > p.zmax) {
+        p.z = p.zmax;
+        p.dir = -1;
+      }
+      const g = root.current[i];
+      if (!g) return;
+      const x = rx(p.z) + p.side * 6.4;
+      g.position.set(x, h(x, p.z), p.z);
+      g.rotation.y = Math.atan2(rdx(p.z) * p.dir, p.dir);
+      const sw = Math.sin(clock.elapsedTime * 5 + i) * 0.6,
+        l = L.current[i],
+        rr = R.current[i];
+      if (l) l.rotation.x = sw;
+      if (rr) rr.rotation.x = -sw;
+      if (pp && Math.hypot(pp.x - x, pp.z - p.z) < 0.9)
+        useGame.getState().set({ toast: "Crash!" });
+    });
+  });
+  return (
+    <group>
+      {PEOPLE.map((p, i) => (
+        <group
+          key={i}
+          ref={(el) => {
+            root.current[i] = el;
+          }}
+        >
+          {[-0.1, 0.1].map((x, k) => (
+            <group
+              key={x}
+              ref={(el) => {
+                (k ? R : L).current[i] = el;
+              }}
+              position={[x, 0.9, 0]}
+            >
+              <mesh position={[0, -0.42, 0]} castShadow>
+                <capsuleGeometry args={[0.07, 0.6, 4, 8]} />
+                <meshStandardMaterial
+                  color={p.skirt ? p.skin : "#2b3a55"}
+                  roughness={0.9}
+                />
+              </mesh>
+            </group>
+          ))}
+          {p.skirt && (
+            <mesh position={[0, 0.75, 0]} castShadow>
+              <cylinderGeometry args={[0.2, 0.32, 1, 12]} />
+              <meshStandardMaterial
+                color={p.c}
+                side={THREE.DoubleSide}
+                roughness={0.9}
+              />
+            </mesh>
+          )}
+          <mesh position={[0, 1.3, 0]} castShadow>
+            <capsuleGeometry args={[0.17, 0.35, 4, 10]} />
+            <meshStandardMaterial color={p.c} roughness={0.9} />
+          </mesh>
+          {[-1, 1].map((s) => (
+            <mesh
+              key={s}
+              position={[s * 0.24, 1.25, 0]}
+              rotation={[0, 0, s * 0.1]}
+            >
+              <capsuleGeometry args={[0.05, 0.5, 4, 8]} />
+              <meshStandardMaterial color={p.skin} />
+            </mesh>
+          ))}
+          <mesh position={[0, 1.78, 0]}>
+            <sphereGeometry args={[0.12, 12, 10]} />
+            <meshStandardMaterial color={p.skin} />
+          </mesh>
+          <mesh position={[0, 1.84, -0.02]} scale={[1, 0.6, 1]}>
+            <sphereGeometry args={[0.125, 10, 8]} />
+            <meshStandardMaterial color="#1a1a1a" />
+          </mesh>
+        </group>
+      ))}
+    </group>
+  );
+}
+
+export function Birds() {
+  const birds = useMemo(
+    () =>
+      [30, -40, -200, -340].flatMap((cz, f) =>
+        Array.from({ length: 5 }, (_, k) => ({
+          cx: rx(cz) + (f % 2 ? -20 : 20),
+          cz,
+          R: 15 + k * 4,
+          y: 24 + k * 2 + f * 3,
+          sp: 0.25 + k * 0.03,
+          ph: k * 1.3,
+          c: f === 1 ? "#f2f2f2" : "#262626",
+        })),
+      ),
+    [],
+  );
+  const wing = useMemo(() => {
+    const g = new THREE.BufferGeometry();
+    g.setAttribute(
+      "position",
+      new THREE.Float32BufferAttribute(
+        [0, 0, 0.15, 0, 0, -0.15, 0.9, 0, -0.05],
+        3,
+      ),
+    );
+    g.computeVertexNormals();
+    return g;
+  }, []);
+  const root = useRef<(THREE.Group | null)[]>([]),
+    wl = useRef<(THREE.Group | null)[]>([]),
+    wr = useRef<(THREE.Group | null)[]>([]);
+  useFrame(({ clock }) => {
+    const t = clock.elapsedTime;
+    birds.forEach((b, i) => {
+      const g = root.current[i];
+      if (!g) return;
+      const a = b.ph + t * b.sp;
+      g.visible = env.night < 0.7;
+      g.position.set(
+        b.cx + Math.cos(a) * b.R,
+        b.y + Math.sin(t * 0.5 + b.ph) * 2,
+        b.cz + Math.sin(a) * b.R,
+      );
+      g.rotation.y = Math.atan2(-Math.sin(a), Math.cos(a));
+      const f = Math.sin(t * 8 + b.ph) * 0.6;
+      if (wl.current[i]) wl.current[i]!.rotation.z = f;
+      if (wr.current[i]) wr.current[i]!.rotation.z = f;
+    });
+  });
+  return (
+    <group>
+      {birds.map((b, i) => (
+        <group
+          key={i}
+          ref={(el) => {
+            root.current[i] = el;
+          }}
+        >
+          <mesh rotation={[Math.PI / 2, 0, 0]}>
+            <coneGeometry args={[0.08, 0.5, 6]} />
+            <meshStandardMaterial color={b.c} />
+          </mesh>
+          <group
+            ref={(el) => {
+              wl.current[i] = el;
+            }}
+          >
+            <mesh geometry={wing}>
+              <meshStandardMaterial color={b.c} side={THREE.DoubleSide} />
+            </mesh>
+          </group>
+          <group
+            ref={(el) => {
+              wr.current[i] = el;
+            }}
+            scale={[-1, 1, 1]}
+          >
+            <mesh geometry={wing}>
+              <meshStandardMaterial color={b.c} side={THREE.DoubleSide} />
+            </mesh>
+          </group>
+        </group>
       ))}
     </group>
   );
